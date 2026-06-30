@@ -1,3 +1,5 @@
 telethon
 python-dotenv
 tqdm
+pytest
+pytest-asyncio
