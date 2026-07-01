@@ -1,0 +1,381 @@
+version: 2
+
+sources:
+  - name: raw
+    description: Raw data layer containing unprocessed data from Telegram API
+    database: medical_warehouse
+    schema: raw
+    tables:
+      - name: telegram_messages
+        description: Raw Telegram messages scraped from public medical channels
+        columns:
+          - name: id
+            description: Auto-incrementing primary key
+            data_type: integer
+            tests:
+              - not_null
+
+          - name: message_id
+            description: Unique Telegram message identifier
+            data_type: integer
+            tests:
+              - not_null
+              - relationships:
+                  arguments:
+                    to: ref('stg_telegram_messages')
+                    field: message_id
+
+          - name: channel_name
+            description: Name of the Telegram channel
+            data_type: varchar
+            tests:
+              - not_null
+
+          - name: message_date
+            description: Timestamp when message was posted
+            data_type: timestamp
+            tests:
+              - not_null
+
+          - name: message_text
+            description: Full text content of the message
+            data_type: text
+
+          - name: has_media
+            description: Flag indicating if message contains media
+            data_type: boolean
+
+          - name: image_path
+            description: File path to downloaded image if applicable
+            data_type: varchar
+
+          - name: views
+            description: Number of views on the message
+            data_type: integer
+            tests:
+              - not_null
+
+          - name: forwards
+            description: Number of forwards of the message
+            data_type: integer
+
+          - name: reactions
+            description: Number of reactions to the message
+            data_type: integer
+
+models:
+  - name: stg_telegram_messages
+    description: Staging layer - cleaned and standardized messages
+    columns:
+      - name: message_id
+        description: Unique message identifier
+        data_type: integer
+        tests:
+          - not_null
+          - unique
+
+      - name: channel_name
+        description: Name of the source channel
+        data_type: varchar
+        tests:
+          - not_null
+
+      - name: message_date
+        description: Message timestamp (raw)
+        data_type: timestamp
+        tests:
+          - not_null
+
+      - name: message_date_utc
+        description: Message timestamp normalized to UTC
+        data_type: timestamp
+
+      - name: message_text
+        description: Cleaned message text content
+        data_type: varchar
+
+      - name: message_length
+        description: Length of message text in characters
+        data_type: integer
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                max_value: 5000
+
+      - name: has_media
+        description: Whether message contains any media
+        data_type: boolean
+        tests:
+          - not_null
+
+      - name: has_image
+        description: Whether message contains an image file
+        data_type: boolean
+
+      - name: views
+        description: Number of message views (validated)
+        data_type: integer
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                max_value: 999999
+
+      - name: forwards
+        description: Number of message forwards
+        data_type: integer
+
+      - name: reactions
+        description: Number of message reactions
+        data_type: integer
+
+      - name: total_engagement
+        description: Sum of views, forwards, and reactions
+        data_type: integer
+
+      - name: is_valid_message
+        description: Data quality flag - TRUE if message passes all validations
+        data_type: boolean
+        tests:
+          - not_null
+
+      - name: transformed_at
+        description: Timestamp when record was transformed
+        data_type: timestamp
+
+  - name: dim_channels
+    description: Dimension table - channel master data with metrics
+    tests:
+      - dbt_expectations.expect_table_row_count_to_be_between:
+          arguments:
+            min_value: 1
+            max_value: 100
+
+    columns:
+      - name: channel_key
+        description: Surrogate key for channels (primary key)
+        data_type: integer
+        tests:
+          - not_null
+          - unique
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 1
+                max_value: 10000
+
+      - name: channel_name
+        description: Business key - original channel name
+        data_type: varchar
+        tests:
+          - not_null
+          - unique
+
+      - name: channel_type
+        description: Classification of channel (Pharmaceutical, Cosmetics, Medical, Other)
+        data_type: varchar
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["Pharmaceutical", "Cosmetics", "Medical", "Other"]
+
+      - name: total_messages
+        description: Total count of messages from this channel
+        data_type: integer
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 1
+                max_value: 1000000
+
+      - name: total_images
+        description: Total count of messages with images
+        data_type: integer
+
+      - name: avg_views
+        description: Average views per message
+        data_type: numeric
+
+      - name: avg_engagement
+        description: Average total engagement per message
+        data_type: numeric
+
+      - name: first_post_date
+        description: Date of first message in channel
+        data_type: date
+
+      - name: last_post_date
+        description: Date of most recent message
+        data_type: date
+
+      - name: activity_status
+        description: Current activity level (Active, Moderate, Inactive)
+        data_type: varchar
+        tests:
+          - accepted_values:
+              arguments:
+                values: ["Active", "Moderate", "Inactive"]
+
+  - name: dim_dates
+    description: Standard date dimension for analytical queries
+    tests:
+      - dbt_expectations.expect_table_row_count_to_be_between:
+          arguments:
+            min_value: 1
+            max_value: 10000
+
+    columns:
+      - name: date_key
+        description: Surrogate key for dates (primary key)
+        data_type: integer
+        tests:
+          - not_null
+          - unique
+
+      - name: calendar_date
+        description: Actual date value
+        data_type: date
+        tests:
+          - not_null
+          - unique
+
+      - name: year
+        description: Calendar year
+        data_type: integer
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 2020
+                max_value: 2030
+
+      - name: month
+        description: Month number (1-12)
+        data_type: integer
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 1
+                max_value: 12
+
+      - name: day_of_month
+        description: Day of month (1-31)
+        data_type: integer
+
+      - name: month_name
+        description: Month name
+        data_type: varchar
+
+      - name: day_name
+        description: Day of week name
+        data_type: varchar
+
+      - name: week_of_year
+        description: Week number in year
+        data_type: integer
+
+      - name: quarter
+        description: Quarter number
+        data_type: integer
+
+      - name: is_weekend
+        description: Flag for weekend days
+        data_type: boolean
+
+  - name: fct_messages
+    description: Fact table - core grain is one row per message
+    tests:
+      - dbt_expectations.expect_table_row_count_to_be_between:
+          arguments:
+            min_value: 100
+            max_value: 10000000
+
+    columns:
+      - name: message_sk
+        description: Surrogate key for messages
+        data_type: integer
+        tests:
+          - not_null
+          - unique
+
+      - name: message_id
+        description: Business key - Telegram message ID
+        data_type: integer
+        tests:
+          - not_null
+
+      - name: channel_key
+        description: Foreign key to dim_channels
+        data_type: integer
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_channels')
+                field: channel_key
+
+      - name: date_key
+        description: Foreign key to dim_dates
+        data_type: integer
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_dates')
+                field: date_key
+
+      - name: message_text
+        description: Message content
+        data_type: varchar
+
+      - name: message_length
+        description: Character count of message
+        data_type: integer
+
+      - name: views
+        description: View count (measure)
+        data_type: integer
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                max_value: 999999
+
+      - name: forwards
+        description: Forward count (measure)
+        data_type: integer
+
+      - name: reactions
+        description: Reaction count (measure)
+        data_type: integer
+
+      - name: total_engagement
+        description: Sum of all engagement metrics
+        data_type: integer
+
+      - name: engagement_level
+        description: Categorical engagement classification
+        data_type: varchar
+        tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - "No Engagement"
+                  - "Low Engagement"
+                  - "Medium Engagement"
+                  - "High Engagement"
+                  - "Viral"
+
+      - name: content_type
+        description: Type of content (Text, Image, Text+Image, Empty)
+        data_type: varchar
+
+      - name: is_valid_message
+        description: Data quality flag
+        data_type: boolean
