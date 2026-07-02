@@ -23,21 +23,15 @@ clean-targets: # directories to be removed by `dbt clean`
 
 models:
   medical_warehouse:
-    # Config indicated by + and applies to all files using the `@` macro
-    # These settings configure your example models so they build as views.
-
-    materialization: view
-
     staging:
       +materialized: view
-
       tags: ["staging"]
       meta:
         owner: "analytics_team"
         frequency: "daily"
 
     marts:
-      +materialized: view
+      +materialized: table
       tags: ["marts", "production"]
       meta:
         owner: "analytics_team"
