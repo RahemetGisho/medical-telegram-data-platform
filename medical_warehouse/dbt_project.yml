@@ -20,20 +20,21 @@ clean-targets: # directories to be removed by `dbt clean`
 # In this example config, we tell dbt to build all models in the example/ directory
 # as tables. These settings can be overridden in the individual model properties
 # (see my_first_dbt_model.sql and my_second_dbt_model.sql for more information).
-
 models:
   medical_warehouse:
     staging:
+      +schema: staging
       +materialized: view
-      tags: ["staging"]
-      meta:
+      +tags: ["staging"]
+      +meta:
         owner: "analytics_team"
         frequency: "daily"
 
     marts:
+      +schema: marts
       +materialized: table
-      tags: ["marts", "production"]
-      meta:
+      +tags: ["marts", "production"]
+      +meta:
         owner: "analytics_team"
         frequency: "daily"
         access: "public"
